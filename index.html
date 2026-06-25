@@ -503,8 +503,6 @@ body.scene-parent { background: linear-gradient(135deg, #e8eaf6, #e3f2fd, #e8f5e
 
     <!-- 任務計劃 Tab -->
     <div class="tab-content active" id="tab-tasks">
-
-      <!-- 選玩家 -->
       <div class="plan-player-tabs">
         <button class="plan-player-tab active hayden" id="plan-btn-hayden" onclick="selectPlanPlayer('hayden')">
           <div class="pp-emoji">👦</div><div class="pp-name">Hayden</div>
@@ -513,16 +511,12 @@ body.scene-parent { background: linear-gradient(135deg, #e8eaf6, #e3f2fd, #e8f5e
           <div class="pp-emoji">👧</div><div class="pp-name">Celine</div>
         </button>
       </div>
-
-      <!-- 週計劃 -->
       <div class="plan-section">
         <div class="plan-section-title">📅 週計劃 <span style="font-size:13px;color:#aaa;font-weight:normal;">（設定一次，每週自動運行）</span></div>
         <table class="weekly-grid" id="weekly-grid"></table>
         <button class="weekly-save-btn" onclick="saveWeeklyPlan()">💾 儲存週計劃</button>
         <div class="plan-status" id="weekly-status"></div>
       </div>
-
-      <!-- 今日臨時任務 -->
       <div class="plan-section">
         <div class="plan-section-title">⚡ 今日臨時任務 <span style="font-size:13px;color:#aaa;font-weight:normal;">（只影響今天，不改週計劃）</span></div>
         <div class="temp-task-box">
@@ -532,8 +526,6 @@ body.scene-parent { background: linear-gradient(135deg, #e8eaf6, #e3f2fd, #e8f5e
           <div class="plan-status" id="temp-status"></div>
         </div>
       </div>
-
-      <!-- 今日完成狀況 -->
       <div class="plan-section">
         <div class="plan-section-title">👀 今日完成狀況</div>
         <div class="completion-grid">
@@ -547,7 +539,6 @@ body.scene-parent { background: linear-gradient(135deg, #e8eaf6, #e3f2fd, #e8f5e
           </div>
         </div>
       </div>
-
     </div>
 
     <!-- 字庫管理 Tab -->
@@ -650,30 +641,25 @@ var currentSceneIndex = 0;
 var lastMilestone    = -1;
 var audioCtx         = null;
 var sessionStartTime = null;
-var PARENT_PIN       = '1234';
 
-// 任務狀態
-// weeklyPlan[player] = { monday:['chinese'], tuesday:['chinese'], ... }
-// tempTasks[player]  = ['chinese']   ← 今日臨時
-// doneTasks[player]  = ['chinese']   ← 今日已完成
+// ★ 改動1：PIN 預設空白，從 Firestore 讀取
+var PARENT_PIN = '';
+
 var weeklyPlan  = { hayden:{}, celine:{} };
 var tempTasks   = { hayden:[], celine:[] };
 var doneTasks   = { hayden:[], celine:[] };
-var planPlayer  = 'hayden';  // 後台正在編輯哪個玩家
+var planPlayer  = 'hayden';
 
-// 星期幾對應 key
 var DAY_KEYS    = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
 var DAY_LABELS  = ['日','一','二','三','四','五','六'];
 var DAY_EN      = ['週日','週一','週二','週三','週四','週五','週六'];
 
-// ====== 遊戲目錄 ======
 var GAME_CATALOG = [
   { id:'chinese', name:'認字冒險', icon:'🏙️', desc:'走遍城市，找回消失的文字！', available:true  },
   { id:'math',    name:'數學冒險', icon:'➕',  desc:'即將推出！',                available:false },
   { id:'english', name:'英文冒險', icon:'🔠',  desc:'即將推出！',                available:false }
 ];
 
-// ====== SCENES ======
 var scenes = [
   { name:'我的家',    icon:'\u{1F3E0}', sky:'\u{1F305}',      bg:'scene-home',   items:['\u{1F3E0}','\u{1F511}','\u{1F6CF}','\u{1F9F8}','\u{1F33C}','\u{1F497}'] },
   { name:'城市公園',  icon:'\u{1F333}', sky:'\u2600\uFE0F',   bg:'scene-park',   items:['\u{1F388}','\u{1F98B}','\u{1F338}','\u{1F43F}','\u{1F340}','\u{1F33A}','\u{1F41E}','\u{1F33B}'] },
@@ -805,18 +791,32 @@ async function addWordToLibrary(word,category) {
 }
 async function deleteWordFromLibrary(docId) { await deleteDoc(doc(db,'wordLibrary',docId)); }
 
-// ====== FIREBASE: TASKS ======
-// 結構：
-// tasks/{player}/weeklyPlan  → { monday:['chinese'], tuesday:['chinese'], ... }
-// tasks/{player}/daily/{date} → { temp:['chinese'], done:['chinese'] }
+// ====== FIREBASE: PIN ======
+// ★ 改動2：新增 loadParentPin 函數
+async function loadParentPin() {
+  try {
+    var snap = await getDoc(doc(db, 'settings', 'parentPin'));
+    if (snap.exists()) {
+      PARENT_PIN = snap.data().pin;
+    } else {
+      // 第一次使用，自動建立預設 PIN = 1234
+      await setDoc(doc(db, 'settings', 'parentPin'), {
+        pin: '1234',
+        createdAt: serverTimestamp()
+      });
+      PARENT_PIN = '1234';
+    }
+  } catch(e) {
+    console.error('讀取PIN失敗', e);
+    PARENT_PIN = '1234'; // 讀取失敗時用預設值
+  }
+}
 
+// ====== FIREBASE: TASKS ======
 async function loadTasksForPlayer(player) {
   try {
-    // 週計劃
     var wpSnap=await getDoc(doc(db,'tasks',player,'data','weeklyPlan'));
     weeklyPlan[player] = wpSnap.exists() ? (wpSnap.data().plan||{}) : {};
-
-    // 今天的臨時和完成
     var todaySnap=await getDoc(doc(db,'tasks',player,'daily',todayKey()));
     if (todaySnap.exists()) {
       tempTasks[player] = todaySnap.data().temp || [];
@@ -851,7 +851,6 @@ async function markTaskDone(player, gameId) {
   }
 }
 
-// 取得今天有效任務 = 週計劃今天 + 今日臨時（合併去重）
 function getTodayTasks(player) {
   var dayKey = todayDayKey();
   var weekly = (weeklyPlan[player]&&weeklyPlan[player][dayKey]) ? weeklyPlan[player][dayKey] : [];
@@ -930,9 +929,11 @@ function selectSmartWords(library,stats,maxCount) {
 }
 
 // ====== INIT ======
+// ★ 改動3：init() 加入 loadParentPin()
 async function init() {
   buildSkyline();
   showLoading('連接城市資料庫...');
+  await loadParentPin();      // ← 新增：先讀取 PIN
   await loadWordLibrary();
   var hSummary=await getPlayerSummary('hayden');
   var cSummary=await getPlayerSummary('celine');
@@ -967,7 +968,6 @@ function renderHub(player,summary) {
   var badge=document.getElementById('hub-player-badge');
   badge.textContent=charNames[player]; badge.className='hub-player-badge '+player;
 
-  // 今日任務
   var todayTasks=getTodayTasks(player);
   var tasksSection=document.getElementById('hub-tasks-section');
   var tasksList=document.getElementById('hub-tasks-list');
@@ -990,10 +990,8 @@ function renderHub(player,summary) {
     tasksSection.style.display='none';
   }
 
-  // 空字庫提示
   document.getElementById('hub-empty-notice').style.display=fullWordLibrary.length===0?'block':'none';
 
-  // 遊戲卡片
   var grid=document.getElementById('hub-games-grid'), cardsHtml='';
   GAME_CATALOG.forEach(function(game){
     var isTask=todayTasks.includes(game.id);
@@ -1207,7 +1205,6 @@ window.finishGame=async function(){
   unknownList.forEach(function(w){saves.push(saveWordResult(currentPlayer,w,false));});
   await Promise.all(saves);
   await saveSession(currentPlayer,allWords.length,knownWords.length,unknownList);
-  // 標記任務完成
   var todayGameTasks=getTodayTasks(currentPlayer);
   if(todayGameTasks.includes('chinese')) await markTaskDone(currentPlayer,'chinese');
   var summary=await getPlayerSummary(currentPlayer);
@@ -1292,15 +1289,27 @@ window.showPinEntry=function(){
   var overlay=document.createElement('div'); overlay.className='celebration'; overlay.id='pin-overlay';
   overlay.innerHTML=
     '<div class="pin-container"><h2>🔒 家長登入</h2>'+
-    '<input type="password" class="pin-input" id="pin-input-field" placeholder="••••" maxlength="4" oninput="if(this.value.length===4) checkPin()" />'+
+    '<input type="password" class="pin-input" id="pin-input-field" placeholder="••••" maxlength="20" oninput="checkPinLength()" />'+
     '<div class="pin-error" id="pin-error"></div>'+
-    '<div style="margin-top:15px;"><button class="btn btn-back btn-sm" onclick="document.getElementById(\'pin-overlay\').remove()">取消</button></div>'+
-    '</div>';
+    '<div style="margin-top:15px;display:flex;gap:10px;justify-content:center;">'+
+    '<button class="btn btn-parent btn-sm" onclick="checkPin()">✅ 確認</button>'+
+    '<button class="btn btn-back btn-sm" onclick="document.getElementById(\'pin-overlay\').remove()">取消</button>'+
+    '</div></div>';
   document.body.appendChild(overlay);
   setTimeout(function(){document.getElementById('pin-input-field').focus();},100);
 };
+
+// ★ 改動4：checkPin 改為從 PARENT_PIN 變數驗證（已從 Firestore 讀取）
+window.checkPinLength=function(){
+  // 按 Enter 也可以確認
+  var field=document.getElementById('pin-input-field');
+  if(field && field.value.length>=4){
+    // 不自動提交，等用戶按確認
+  }
+};
 window.checkPin=function(){
   var val=document.getElementById('pin-input-field').value;
+  if(!val){ document.getElementById('pin-error').textContent='❌ 請輸入密碼'; return; }
   if(val===PARENT_PIN){
     document.getElementById('pin-overlay').remove(); openParentDashboard();
   } else {
@@ -1308,6 +1317,7 @@ window.checkPin=function(){
     document.getElementById('pin-input-field').value='';
   }
 };
+
 async function openParentDashboard(){
   showLoading('載入管理後台...');
   await loadWordLibrary();
@@ -1349,15 +1359,11 @@ function renderWeeklyGrid(){
   var player=planPlayer;
   var plan=weeklyPlan[player]||{};
   var availableGames=GAME_CATALOG.filter(function(g){return g.available;});
-
-  // 表頭
   var html='<thead><tr><th style="text-align:left;padding-left:8px;"></th>';
   availableGames.forEach(function(g){
     html+='<th>'+g.icon+'<br><span style="font-size:11px;">'+g.name+'</span></th>';
   });
   html+='</tr></thead><tbody>';
-
-  // 每一行是一天
   DAY_KEYS.forEach(function(dayKey,idx){
     var isWeekend=(idx===0||idx===6);
     html+='<tr>';
