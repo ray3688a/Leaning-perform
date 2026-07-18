@@ -25,10 +25,42 @@ body.scene-parent { background: linear-gradient(135deg, #e8eaf6, #e3f2fd, #e8f5e
 .page { display: none; min-height: 100vh; padding: 20px; }
 .page.active { display: flex; flex-direction: column; align-items: center; }
 
-.loading-overlay { position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(255,255,255,0.9); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; }
+/* ====== LOADING OVERLAY (更新版) ====== */
+.loading-overlay {
+  position: fixed; top:0; left:0; right:0; bottom:0;
+  background: rgba(255,255,255,0.95);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  z-index: 9999;
+}
 .loading-spinner { font-size: 60px; animation: spin 1s linear infinite; margin-bottom: 15px; }
 @keyframes spin { 0%{transform:rotate(0deg);}100%{transform:rotate(360deg);} }
-.loading-text { font-size: 18px; color: #888; }
+.loading-text { font-size: 18px; color: #888; margin-bottom: 8px; }
+.loading-sub  { font-size: 13px; color: #bbb; margin-bottom: 20px; min-height: 20px; }
+
+/* 重試按鈕（預設隱藏） */
+.loading-retry-btn {
+  display: none;
+  padding: 12px 30px;
+  background: linear-gradient(135deg, #ff6b6b, #ffa500);
+  color: white; border: none; border-radius: 25px;
+  font-size: 16px; font-weight: bold; font-family: inherit;
+  cursor: pointer; transition: all 0.3s;
+  animation: fadeIn 0.5s ease;
+}
+.loading-retry-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(255,107,107,0.4); }
+.loading-timeout-msg {
+  display: none;
+  font-size: 14px; color: #ff6b6b;
+  margin-bottom: 12px; text-align: center;
+  line-height: 1.6; animation: fadeIn 0.5s ease;
+}
+@keyframes fadeIn { from{opacity:0;}to{opacity:1;} }
+.loading-progress-dots { font-size: 24px; letter-spacing: 4px; color: #ddd; margin-top: 10px; }
+.loading-progress-dots span { animation: dotPulse 1.4s ease infinite; }
+.loading-progress-dots span:nth-child(2) { animation-delay: 0.2s; }
+.loading-progress-dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes dotPulse { 0%,80%,100%{opacity:0.2;}40%{opacity:1;} }
 
 .skyline { position: fixed; bottom:0; left:0; right:0; height:120px; pointer-events:none; z-index:0; opacity:0.15; }
 .skyline-buildings { display:flex; align-items:flex-end; justify-content:center; height:100%; gap:4px; }
@@ -316,7 +348,6 @@ body.scene-parent { background: linear-gradient(135deg, #e8eaf6, #e3f2fd, #e8f5e
 .celebration { position:fixed; top:0; left:0; right:0; bottom:0; display:flex; align-items:center; justify-content:center; z-index:2000; background:rgba(0,0,0,0.35); animation:fadeIn 0.3s ease; }
 .celebration-content { background:white; border-radius:30px; padding:40px 50px; text-align:center; box-shadow:0 30px 80px rgba(0,0,0,0.3); animation:popIn 0.5s ease; max-width:420px; width:90%; }
 @keyframes popIn  { 0%{transform:scale(0.3);opacity:0;}60%{transform:scale(1.1);}100%{transform:scale(1);opacity:1;} }
-@keyframes fadeIn { from{opacity:0;}to{opacity:1;} }
 .milestone-popup { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:white; border-radius:25px; padding:30px 40px; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,0.25); z-index:1500; animation:popIn 0.5s ease; }
 .confetti-piece { position:fixed; top:-10px; z-index:3000; pointer-events:none; animation:confettiFall linear forwards; }
 @keyframes confettiFall { 0%{transform:translateY(0) rotate(0deg);opacity:1;}100%{transform:translateY(110vh) rotate(720deg);opacity:0;} }
@@ -339,10 +370,23 @@ body.scene-parent { background: linear-gradient(135deg, #e8eaf6, #e3f2fd, #e8f5e
 </head>
 <body class="scene-player">
 
+<!-- ====== LOADING OVERLAY (更新版：有 timeout + 重試) ====== -->
 <div class="loading-overlay" id="loading-overlay">
   <div class="loading-spinner">🏙️</div>
-  <div class="loading-text">載入城市中...</div>
+  <div class="loading-text"    id="loading-text">載入城市中...</div>
+  <div class="loading-sub"     id="loading-sub"></div>
+  <div class="loading-progress-dots">
+    <span>●</span><span>●</span><span>●</span>
+  </div>
+  <div class="loading-timeout-msg" id="loading-timeout-msg">
+    ⏱️ 載入時間比較長...<br>
+    可能係網絡問題，請試試重新載入！
+  </div>
+  <button class="loading-retry-btn" id="loading-retry-btn" onclick="retryInit()">
+    🔄 重新載入
+  </button>
 </div>
+
 <div class="skyline" id="skyline"></div>
 
 <!-- PAGE 0: PLAYER SELECT -->
@@ -501,7 +545,6 @@ body.scene-parent { background: linear-gradient(135deg, #e8eaf6, #e3f2fd, #e8f5e
       <button class="tab-btn"        onclick="switchTab('tab-reset',this)">🔄 重設數據</button>
     </div>
 
-    <!-- 任務計劃 Tab -->
     <div class="tab-content active" id="tab-tasks">
       <div class="plan-player-tabs">
         <button class="plan-player-tab active hayden" id="plan-btn-hayden" onclick="selectPlanPlayer('hayden')">
@@ -541,7 +584,6 @@ body.scene-parent { background: linear-gradient(135deg, #e8eaf6, #e3f2fd, #e8f5e
       </div>
     </div>
 
-    <!-- 字庫管理 Tab -->
     <div class="tab-content" id="tab-words">
       <div class="lib-tabs">
         <button class="lib-tab-btn active word-lib" id="lib-btn-word" onclick="switchLibTab('lib-word',this,'word-lib')">
@@ -551,8 +593,6 @@ body.scene-parent { background: linear-gradient(135deg, #e8eaf6, #e3f2fd, #e8f5e
           🔤 詞語庫（認詞冒險）
         </button>
       </div>
-
-      <!-- 單字庫 -->
       <div class="lib-tab-content active" id="lib-word">
         <div class="word-add-area">
           <label>➕ 新增單字到字庫</label>
@@ -572,8 +612,6 @@ body.scene-parent { background: linear-gradient(135deg, #e8eaf6, #e3f2fd, #e8f5e
           <div class="word-chips" id="word-chips-display"></div>
         </div>
       </div>
-
-      <!-- 詞語庫 -->
       <div class="lib-tab-content" id="lib-phrase">
         <div class="word-add-area">
           <label>➕ 新增詞語到詞語庫</label>
@@ -595,7 +633,6 @@ body.scene-parent { background: linear-gradient(135deg, #e8eaf6, #e3f2fd, #e8f5e
       </div>
     </div>
 
-    <!-- 學習報告 Tab -->
     <div class="tab-content" id="tab-stats">
       <div class="player-stats-grid">
         <div class="player-stat-card hayden">
@@ -625,13 +662,11 @@ body.scene-parent { background: linear-gradient(135deg, #e8eaf6, #e3f2fd, #e8f5e
       </div>
     </div>
 
-    <!-- 遊戲歷史 Tab -->
     <div class="tab-content" id="tab-sessions">
       <h3 style="font-size:18px;color:#555;margin-bottom:12px;">📅 最近遊戲記錄</h3>
       <div class="sessions-list" id="sessions-list"></div>
     </div>
 
-    <!-- 重設數據 Tab -->
     <div class="tab-content" id="tab-reset">
       <div class="reset-section">
         <h3>⚠️ 重設數據</h3>
@@ -654,10 +689,19 @@ body.scene-parent { background: linear-gradient(135deg, #e8eaf6, #e3f2fd, #e8f5e
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js";
-import { getFirestore, doc, setDoc, getDoc, collection, getDocs,
-         addDoc, deleteDoc, query, orderBy, limit,
-         serverTimestamp, writeBatch }
-  from "https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js";
+
+// ====================================================
+// ✅ 重要改動：用 initializeFirestore + memoryLocalCache
+//    完全避開 Safari/IndexedDB hang 問題
+// ====================================================
+import {
+  initializeFirestore,
+  memoryLocalCache,
+  doc, setDoc, getDoc,
+  collection, getDocs, addDoc, deleteDoc,
+  query, orderBy, limit,
+  serverTimestamp, writeBatch
+} from "https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js";
 
 var firebaseConfig = {
   apiKey:            "AIzaSyChKoSDCKkFqCppD90B2NQ0V5Cc3z_jtQ4",
@@ -667,8 +711,55 @@ var firebaseConfig = {
   messagingSenderId: "237822090954",
   appId:             "1:237822090954:web:02ff2b231f40a49e735e33"
 };
+
 var app = initializeApp(firebaseConfig);
-var db  = getFirestore(app);
+
+// ✅ memoryLocalCache：完全唔用 IndexedDB，Safari 穩定好多
+var db = initializeFirestore(app, {
+  localCache: memoryLocalCache()
+});
+
+// ====== TIMEOUT 管理 ======
+var loadingTimer     = null;   // 15秒後顯示 timeout 訊息
+var loadingTimer2    = null;   // 25秒後顯示重試按鈕
+var isInitRunning    = false;  // 防止重複執行
+
+var LOADING_TIMEOUT_MS      = 15000;  // 15秒顯示警告
+var LOADING_RETRY_SHOW_MS   = 25000;  // 25秒顯示重試按鈕
+
+function startLoadingTimer() {
+  clearLoadingTimers();
+  loadingTimer = setTimeout(function() {
+    var msg = document.getElementById('loading-timeout-msg');
+    if (msg) msg.style.display = 'block';
+  }, LOADING_TIMEOUT_MS);
+
+  loadingTimer2 = setTimeout(function() {
+    var btn = document.getElementById('loading-retry-btn');
+    if (btn) btn.style.display = 'inline-block';
+  }, LOADING_RETRY_SHOW_MS);
+}
+
+function clearLoadingTimers() {
+  if (loadingTimer)  { clearTimeout(loadingTimer);  loadingTimer  = null; }
+  if (loadingTimer2) { clearTimeout(loadingTimer2); loadingTimer2 = null; }
+}
+
+function resetLoadingUI() {
+  var msg = document.getElementById('loading-timeout-msg');
+  var btn = document.getElementById('loading-retry-btn');
+  if (msg) msg.style.display = 'none';
+  if (btn) btn.style.display = 'none';
+}
+
+// ====== 重試函數（全域） ======
+window.retryInit = function() {
+  if (isInitRunning) return;
+  resetLoadingUI();
+  showLoading('重新連接中...');
+  updateLoadingSub('正在重試...');
+  init();
+};
 
 // ====== STATE ======
 var currentPlayer     = '';
@@ -762,12 +853,28 @@ function parseInput(text) {
   parts.forEach(function(t){ t=t.trim(); if(t.length>0&&!seen[t]){seen[t]=true;result.push(t);} });
   return result;
 }
-function hideLoading() { document.getElementById('loading-overlay').style.display='none'; }
-function showLoading(text) {
-  var lo=document.getElementById('loading-overlay');
-  lo.querySelector('.loading-text').textContent=text||'載入中...';
-  lo.style.display='flex';
+
+// ====== LOADING UI ======
+function hideLoading() {
+  clearLoadingTimers();
+  resetLoadingUI();
+  isInitRunning = false;
+  document.getElementById('loading-overlay').style.display = 'none';
 }
+
+function showLoading(text, sub) {
+  var lo = document.getElementById('loading-overlay');
+  document.getElementById('loading-text').textContent = text || '載入中...';
+  updateLoadingSub(sub || '');
+  resetLoadingUI();
+  lo.style.display = 'flex';
+}
+
+function updateLoadingSub(text) {
+  var el = document.getElementById('loading-sub');
+  if (el) el.textContent = text || '';
+}
+
 function todayKey() {
   var d=new Date();
   return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate();
@@ -822,26 +929,59 @@ function buildSkyline() {
   document.getElementById('skyline').innerHTML=html;
 }
 
+// ====== FIREBASE WITH TIMEOUT WRAPPER ======
+// ✅ 所有 Firestore 讀取都加上 timeout 保護
+function withTimeout(promise, ms, label) {
+  ms = ms || 12000;
+  label = label || 'Firestore';
+  return new Promise(function(resolve, reject) {
+    var timer = setTimeout(function() {
+      reject(new Error(label + ' timeout after ' + ms + 'ms'));
+    }, ms);
+    promise.then(function(result) {
+      clearTimeout(timer);
+      resolve(result);
+    }).catch(function(err) {
+      clearTimeout(timer);
+      reject(err);
+    });
+  });
+}
+
 // ====== FIREBASE: PIN ======
 async function loadParentPin() {
   try {
-    var snap=await getDoc(doc(db,'settings','parentPin'));
+    updateLoadingSub('讀取設定...');
+    var snap = await withTimeout(
+      getDoc(doc(db,'settings','parentPin')),
+      10000, 'loadParentPin'
+    );
     if(snap.exists()){ PARENT_PIN=snap.data().pin; }
     else {
       await setDoc(doc(db,'settings','parentPin'),{pin:'1234',createdAt:serverTimestamp()});
       PARENT_PIN='1234';
     }
-  } catch(e){ console.error(e); PARENT_PIN='1234'; }
+  } catch(e) {
+    console.warn('loadParentPin failed, using default:', e.message);
+    PARENT_PIN='1234'; // 讀取失敗用預設 PIN，唔影響主功能
+  }
 }
 
 // ====== FIREBASE: 單字庫 ======
 async function loadWordLibrary() {
   try {
-    var snap=await getDocs(collection(db,'wordLibrary'));
+    updateLoadingSub('讀取字庫...');
+    var snap = await withTimeout(
+      getDocs(collection(db,'wordLibrary')),
+      10000, 'loadWordLibrary'
+    );
     fullWordLibrary=[];
     snap.forEach(function(d){ fullWordLibrary.push(Object.assign({id:d.id},d.data())); });
     return fullWordLibrary;
-  } catch(e){ console.error(e); return []; }
+  } catch(e) {
+    console.warn('loadWordLibrary failed:', e.message);
+    return fullWordLibrary; // 返回現有（可能係空）
+  }
 }
 async function addWordToLibrary(word,category) {
   category=category||'一般';
@@ -854,11 +994,18 @@ async function deleteWordFromLibrary(docId) { await deleteDoc(doc(db,'wordLibrar
 // ====== FIREBASE: 詞語庫 ======
 async function loadPhraseLibrary() {
   try {
-    var snap=await getDocs(collection(db,'phraseLibrary'));
+    updateLoadingSub('讀取詞語庫...');
+    var snap = await withTimeout(
+      getDocs(collection(db,'phraseLibrary')),
+      10000, 'loadPhraseLibrary'
+    );
     fullPhraseLibrary=[];
     snap.forEach(function(d){ fullPhraseLibrary.push(Object.assign({id:d.id},d.data())); });
     return fullPhraseLibrary;
-  } catch(e){ console.error(e); return []; }
+  } catch(e) {
+    console.warn('loadPhraseLibrary failed:', e.message);
+    return fullPhraseLibrary;
+  }
 }
 async function addPhraseToLibrary(phrase,category) {
   category=category||'一般';
@@ -871,16 +1018,28 @@ async function deletePhraseFromLibrary(docId) { await deleteDoc(doc(db,'phraseLi
 // ====== FIREBASE: TASKS ======
 async function loadTasksForPlayer(player) {
   try {
-    var wpSnap=await getDoc(doc(db,'tasks',player,'data','weeklyPlan'));
+    updateLoadingSub('讀取任務（' + charNames[player] + '）...');
+    var wpSnap = await withTimeout(
+      getDoc(doc(db,'tasks',player,'data','weeklyPlan')),
+      10000, 'loadWeeklyPlan'
+    );
     weeklyPlan[player]=wpSnap.exists()?(wpSnap.data().plan||{}):{};
-    var todaySnap=await getDoc(doc(db,'tasks',player,'daily',todayKey()));
+    var todaySnap = await withTimeout(
+      getDoc(doc(db,'tasks',player,'daily',todayKey())),
+      10000, 'loadDailyTask'
+    );
     if(todaySnap.exists()){
       tempTasks[player]=todaySnap.data().temp||[];
       doneTasks[player]=todaySnap.data().done||[];
     } else {
       tempTasks[player]=[]; doneTasks[player]=[];
     }
-  } catch(e){ weeklyPlan[player]={};tempTasks[player]=[];doneTasks[player]=[]; }
+  } catch(e) {
+    console.warn('loadTasksForPlayer failed for ' + player + ':', e.message);
+    weeklyPlan[player]=weeklyPlan[player]||{};
+    tempTasks[player]=tempTasks[player]||[];
+    doneTasks[player]=doneTasks[player]||[];
+  }
 }
 async function saveWeeklyPlanForPlayer(player,plan) {
   await setDoc(doc(db,'tasks',player,'data','weeklyPlan'),{plan:plan,updatedAt:serverTimestamp()});
@@ -911,11 +1070,18 @@ function getTodayTasks(player) {
 // ====== FIREBASE: 單字統計 ======
 async function loadPlayerStats(player) {
   try {
-    var snap=await getDocs(collection(db,'players',player,'wordStats'));
+    updateLoadingSub('讀取進度（' + charNames[player] + '）...');
+    var snap = await withTimeout(
+      getDocs(collection(db,'players',player,'wordStats')),
+      10000, 'loadPlayerStats'
+    );
     wordStatsMap={};
     snap.forEach(function(d){ wordStatsMap[d.data().word]=d.data(); });
     return wordStatsMap;
-  } catch(e){ return {}; }
+  } catch(e) {
+    console.warn('loadPlayerStats failed:', e.message);
+    return wordStatsMap;
+  }
 }
 async function saveWordResult(player,word,success) {
   try {
@@ -928,17 +1094,24 @@ async function saveWordResult(player,word,success) {
       var newStat={word:word,shown:1,success:success?1:0,fail:success?0:1,lastSeen:serverTimestamp()};
       await setDoc(statsRef,newStat); wordStatsMap[word]=newStat;
     }
-  } catch(e){}
+  } catch(e){ console.warn('saveWordResult failed:', e.message); }
 }
 
 // ====== FIREBASE: 詞語統計 ======
 async function loadPhraseStats(player) {
   try {
-    var snap=await getDocs(collection(db,'players',player,'phraseStats'));
+    updateLoadingSub('讀取詞語進度（' + charNames[player] + '）...');
+    var snap = await withTimeout(
+      getDocs(collection(db,'players',player,'phraseStats')),
+      10000, 'loadPhraseStats'
+    );
     phraseStatsMap={};
     snap.forEach(function(d){ phraseStatsMap[d.data().word]=d.data(); });
     return phraseStatsMap;
-  } catch(e){ return {}; }
+  } catch(e) {
+    console.warn('loadPhraseStats failed:', e.message);
+    return phraseStatsMap;
+  }
 }
 async function savePhraseResult(player,phrase,success) {
   try {
@@ -951,7 +1124,7 @@ async function savePhraseResult(player,phrase,success) {
       var newStat={word:phrase,shown:1,success:success?1:0,fail:success?0:1,lastSeen:serverTimestamp()};
       await setDoc(statsRef,newStat); phraseStatsMap[phrase]=newStat;
     }
-  } catch(e){}
+  } catch(e){ console.warn('savePhraseResult failed:', e.message); }
 }
 
 // ====== FIREBASE: SESSION ======
@@ -963,31 +1136,43 @@ async function saveSession(player,played,known,unknownList,gameType) {
       durationMs:Date.now()-sessionStartTime,
       gameType:gameType
     });
-  } catch(e){}
+  } catch(e){ console.warn('saveSession failed:', e.message); }
 }
 
 // ====== FIREBASE: SUMMARY ======
 async function getPlayerSummary(player) {
   try {
-    var wSnap=await getDocs(collection(db,'players',player,'wordStats'));
+    var wSnap = await withTimeout(
+      getDocs(collection(db,'players',player,'wordStats')),
+      10000, 'getPlayerSummary-word'
+    );
     var wShown=0,wSuccess=0,wKnown=0;
     wSnap.forEach(function(d){
       var s=d.data(); wShown+=(s.shown||0); wSuccess+=(s.success||0);
       if(s.shown>0&&(s.success/s.shown)>=0.8) wKnown++;
     });
-    var pSnap=await getDocs(collection(db,'players',player,'phraseStats'));
+    var pSnap = await withTimeout(
+      getDocs(collection(db,'players',player,'phraseStats')),
+      10000, 'getPlayerSummary-phrase'
+    );
     var pShown=0,pSuccess=0,pKnown=0;
     pSnap.forEach(function(d){
       var s=d.data(); pShown+=(s.shown||0); pSuccess+=(s.success||0);
       if(s.shown>0&&(s.success/s.shown)>=0.8) pKnown++;
     });
-    var sessSnap=await getDocs(collection(db,'players',player,'sessions'));
+    var sessSnap = await withTimeout(
+      getDocs(collection(db,'players',player,'sessions')),
+      10000, 'getPlayerSummary-sessions'
+    );
     return {
       wordKnown:wKnown, wordRate:wShown>0?Math.round(wSuccess/wShown*100):0,
       phraseKnown:pKnown, phraseRate:pShown>0?Math.round(pSuccess/pShown*100):0,
       sessions:sessSnap.size
     };
-  } catch(e){ return {wordKnown:0,wordRate:0,phraseKnown:0,phraseRate:0,sessions:0}; }
+  } catch(e) {
+    console.warn('getPlayerSummary failed for ' + player + ':', e.message);
+    return {wordKnown:0,wordRate:0,phraseKnown:0,phraseRate:0,sessions:0};
+  }
 }
 
 // ====== SMART WORD SELECTION ======
@@ -1014,25 +1199,42 @@ function selectSmartWords(library,stats,maxCount) {
   return shuffle(scored.slice(0,maxCount)).map(function(s){ return s.word; });
 }
 
-// ====== INIT ======
+// ====== INIT (加 timeout 保護 + 自動重試) ======
 async function init() {
+  if (isInitRunning) return;
+  isInitRunning = true;
+
   buildSkyline();
-  showLoading('連接城市資料庫...');
+  showLoading('連接城市資料庫...', '');
+  startLoadingTimer(); // ✅ 開始計時
+
   try {
     await loadParentPin();
     await loadWordLibrary();
     await loadPhraseLibrary();
-    var hSummary=await getPlayerSummary('hayden');
-    var cSummary=await getPlayerSummary('celine');
-    updatePlayerPreviews(hSummary,cSummary);
-  } catch(e) {
-    console.error('載入錯誤：',e);
-  } finally {
+
+    updateLoadingSub('讀取玩家記錄...');
+    var hSummary = await getPlayerSummary('hayden');
+    var cSummary = await getPlayerSummary('celine');
+    updatePlayerPreviews(hSummary, cSummary);
+
+    // ✅ 成功！清除 timer，隱藏 loading
     hideLoading();
     setBodyScene('scene-player');
     showPage('page-player');
+
+  } catch(e) {
+    console.error('Init error:', e);
+    // ✅ 出錯時：顯示重試按鈕
+    clearLoadingTimers();
+    isInitRunning = false;
+    document.getElementById('loading-text').textContent = '⚠️ 連接出現問題';
+    document.getElementById('loading-sub').textContent  = e.message || '請檢查網絡';
+    document.getElementById('loading-timeout-msg').style.display = 'block';
+    document.getElementById('loading-retry-btn').style.display   = 'inline-block';
   }
 }
+
 function updatePlayerPreviews(hSummary,cSummary) {
   document.getElementById('hayden-preview').textContent=
     hSummary.wordKnown>0?'認識 '+hSummary.wordKnown+' 字 / '+hSummary.phraseKnown+' 詞語 ⭐':'開始第一次冒險！';
@@ -1043,13 +1245,23 @@ function updatePlayerPreviews(hSummary,cSummary) {
 // ====== PLAYER SELECT → HUB ======
 window.selectPlayer=async function(player) {
   currentPlayer=player;
-  showLoading('準備冒險裝備...');
-  await loadPlayerStats(player);
-  await loadPhraseStats(player);
-  await loadTasksForPlayer(player);
-  var summary=await getPlayerSummary(player);
-  hideLoading();
-  renderHub(player,summary);
+  showLoading('準備冒險裝備...', '');
+  startLoadingTimer();
+  try {
+    updateLoadingSub('讀取字詞統計...');
+    await loadPlayerStats(player);
+    await loadPhraseStats(player);
+    updateLoadingSub('讀取任務...');
+    await loadTasksForPlayer(player);
+    updateLoadingSub('計算進度...');
+    var summary=await getPlayerSummary(player);
+    hideLoading();
+    renderHub(player,summary);
+  } catch(e) {
+    console.error('selectPlayer error:', e);
+    hideLoading();
+    renderHub(player,{wordKnown:0,wordRate:0,phraseKnown:0,phraseRate:0,sessions:0});
+  }
 };
 
 // ====== RENDER HUB ======
@@ -1316,7 +1528,7 @@ function showAllDoneCelebration(){
 // ====== FINISH & SAVE ======
 window.finishGame=async function(){
   document.querySelectorAll('.celebration,.milestone-popup').forEach(function(e){ e.remove(); });
-  showLoading('儲存冒險記錄...');
+  showLoading('儲存冒險記錄...', '');
   var knownSet={};
   knownWords.forEach(function(w){ knownSet[w]=true; });
   var unknownList=allWords.filter(function(w){ return !knownSet[w]; });
@@ -1408,42 +1620,70 @@ function renderReport(knownList,unknownList,summary){
 
 // ====== NAVIGATION ======
 window.replayGame=async function(){
-  showLoading('重新準備字卡...');
-  if(currentGameType==='phrase'){
-    await loadPhraseStats(currentPlayer);
-    allWords=selectSmartWords(fullPhraseLibrary,phraseStatsMap,100);
-  } else {
-    await loadPlayerStats(currentPlayer);
-    allWords=selectSmartWords(fullWordLibrary,wordStatsMap,100);
+  showLoading('重新準備字卡...', '');
+  startLoadingTimer();
+  try {
+    if(currentGameType==='phrase'){
+      await loadPhraseStats(currentPlayer);
+      allWords=selectSmartWords(fullPhraseLibrary,phraseStatsMap,100);
+    } else {
+      await loadPlayerStats(currentPlayer);
+      allWords=selectSmartWords(fullWordLibrary,wordStatsMap,100);
+    }
+    await loadTasksForPlayer(currentPlayer);
+    hideLoading();
+    knownWords=[];undoStack=[];collectedItems=[];currentSceneIndex=0;lastMilestone=-1;
+    sessionStartTime=Date.now();
+    document.getElementById('btn-undo').style.display='none';
+    setDialogue(pickRandom(dialogues.start));
+    buildGameCards();updateScene(true);updateProgress();updateCollectiblesDisplay();
+    showPage('page-game');
+  } catch(e) {
+    console.error('replayGame error:', e);
+    hideLoading();
+    // 即使讀取失敗，都嘗試用現有資料繼續
+    knownWords=[];undoStack=[];collectedItems=[];currentSceneIndex=0;lastMilestone=-1;
+    sessionStartTime=Date.now();
+    buildGameCards();updateScene(true);updateProgress();updateCollectiblesDisplay();
+    showPage('page-game');
   }
-  await loadTasksForPlayer(currentPlayer);
-  hideLoading();
-  knownWords=[];undoStack=[];collectedItems=[];currentSceneIndex=0;lastMilestone=-1;
-  sessionStartTime=Date.now();
-  document.getElementById('btn-undo').style.display='none';
-  setDialogue(pickRandom(dialogues.start));
-  buildGameCards();updateScene(true);updateProgress();updateCollectiblesDisplay();
-  showPage('page-game');
 };
+
 window.backToHub=async function(){
-  showLoading('返回大廳...');
-  await loadPlayerStats(currentPlayer);
-  await loadPhraseStats(currentPlayer);
-  await loadTasksForPlayer(currentPlayer);
-  var summary=await getPlayerSummary(currentPlayer);
-  hideLoading();
-  renderHub(currentPlayer,summary);
+  showLoading('返回大廳...', '');
+  startLoadingTimer();
+  try {
+    await loadPlayerStats(currentPlayer);
+    await loadPhraseStats(currentPlayer);
+    await loadTasksForPlayer(currentPlayer);
+    var summary=await getPlayerSummary(currentPlayer);
+    hideLoading();
+    renderHub(currentPlayer,summary);
+  } catch(e) {
+    console.error('backToHub error:', e);
+    hideLoading();
+    renderHub(currentPlayer,{wordKnown:0,wordRate:0,phraseKnown:0,phraseRate:0,sessions:0});
+  }
 };
+
 window.backToPlayerSelect=async function(){
-  showLoading('返回主頁...');
-  await loadWordLibrary();
-  await loadPhraseLibrary();
-  var hSummary=await getPlayerSummary('hayden');
-  var cSummary=await getPlayerSummary('celine');
-  updatePlayerPreviews(hSummary,cSummary);
-  hideLoading();
-  setBodyScene('scene-player');
-  showPage('page-player');
+  showLoading('返回主頁...', '');
+  startLoadingTimer();
+  try {
+    await loadWordLibrary();
+    await loadPhraseLibrary();
+    var hSummary=await getPlayerSummary('hayden');
+    var cSummary=await getPlayerSummary('celine');
+    updatePlayerPreviews(hSummary,cSummary);
+    hideLoading();
+    setBodyScene('scene-player');
+    showPage('page-player');
+  } catch(e) {
+    console.error('backToPlayerSelect error:', e);
+    hideLoading();
+    setBodyScene('scene-player');
+    showPage('page-player');
+  }
 };
 
 // ====== PIN ======
@@ -1471,20 +1711,33 @@ window.checkPin=function(){
   }
 };
 async function openParentDashboard(){
-  showLoading('載入管理後台...');
-  await loadWordLibrary();
-  await loadPhraseLibrary();
-  await loadTasksForPlayer('hayden');
-  await loadTasksForPlayer('celine');
-  await loadParentStats();
-  hideLoading();
-  setBodyScene('scene-parent');
-  showPage('page-parent');
-  renderWordChips();
-  renderPhraseChips();
-  planPlayer='hayden';
-  renderPlanUI();
-  renderCompletionStatus();
+  showLoading('載入管理後台...', '');
+  startLoadingTimer();
+  try {
+    await loadWordLibrary();
+    await loadPhraseLibrary();
+    await loadTasksForPlayer('hayden');
+    await loadTasksForPlayer('celine');
+    await loadParentStats();
+    hideLoading();
+    setBodyScene('scene-parent');
+    showPage('page-parent');
+    renderWordChips();
+    renderPhraseChips();
+    planPlayer='hayden';
+    renderPlanUI();
+    renderCompletionStatus();
+  } catch(e) {
+    console.error('openParentDashboard error:', e);
+    hideLoading();
+    setBodyScene('scene-parent');
+    showPage('page-parent');
+    renderWordChips();
+    renderPhraseChips();
+    planPlayer='hayden';
+    renderPlanUI();
+    renderCompletionStatus();
+  }
 }
 
 // ====== PARENT: TABS ======
@@ -1540,7 +1793,7 @@ window.toggleWeeklyCell=function(dayKey,gameId){
   renderWeeklyGrid();
 };
 window.saveWeeklyPlan=async function(){
-  showLoading('儲存週計劃...');
+  showLoading('儲存週計劃...', '');
   await saveWeeklyPlanForPlayer(planPlayer,weeklyPlan[planPlayer]||{});
   hideLoading();
   var s=document.getElementById('weekly-status');
@@ -1568,7 +1821,7 @@ window.toggleTempGame=function(gameId){
   renderTempGames();
 };
 window.saveTempTasks=async function(){
-  showLoading('儲存今日臨時任務...');
+  showLoading('儲存今日臨時任務...', '');
   await saveTempTasksForPlayer(planPlayer,tempTasks[planPlayer]||[]);
   hideLoading();
   var s=document.getElementById('temp-status'), tasks=tempTasks[planPlayer]||[];
@@ -1615,7 +1868,7 @@ window.addWordsToLibrary=async function(){
   var input=document.getElementById('newWordsInput').value.trim();
   if(!input){ alert('請輸入字詞！'); return; }
   var words=parseInput(input), category=document.getElementById('word-category').value;
-  showLoading('新增字詞中...');
+  showLoading('新增字詞中...', '');
   var added=0;
   for(var i=0;i<words.length;i++){ if(await addWordToLibrary(words[i],category)) added++; }
   await loadWordLibrary(); hideLoading();
@@ -1642,7 +1895,7 @@ window.addPhrasesToLibrary=async function(){
   var input=document.getElementById('newPhrasesInput').value.trim();
   if(!input){ alert('請輸入詞語！'); return; }
   var phrases=parseInput(input), category=document.getElementById('phrase-category').value;
-  showLoading('新增詞語中...');
+  showLoading('新增詞語中...', '');
   var added=0;
   for(var i=0;i<phrases.length;i++){ if(await addPhraseToLibrary(phrases[i],category)) added++; }
   await loadPhraseLibrary(); hideLoading();
@@ -1652,32 +1905,45 @@ window.addPhrasesToLibrary=async function(){
 
 // ====== PARENT: STATS ======
 async function loadParentStats(){
-  var hWordStats=await loadPlayerStatsForParent('hayden','wordStats');
-  var cWordStats=await loadPlayerStatsForParent('celine','wordStats');
-  var hPhraseStats=await loadPlayerStatsForParent('hayden','phraseStats');
-  var cPhraseStats=await loadPlayerStatsForParent('celine','phraseStats');
-  var hSummary=await getPlayerSummary('hayden');
-  var cSummary=await getPlayerSummary('celine');
+  try {
+    updateLoadingSub('讀取統計數據...');
+    var hWordStats=await loadPlayerStatsForParent('hayden','wordStats');
+    var cWordStats=await loadPlayerStatsForParent('celine','wordStats');
+    var hPhraseStats=await loadPlayerStatsForParent('hayden','phraseStats');
+    var cPhraseStats=await loadPlayerStatsForParent('celine','phraseStats');
+    var hSummary=await getPlayerSummary('hayden');
+    var cSummary=await getPlayerSummary('celine');
 
-  document.getElementById('p-hayden-known').textContent=hSummary.wordKnown+' 個字';
-  document.getElementById('p-hayden-rate').textContent=hSummary.wordRate+'%';
-  document.getElementById('p-hayden-phrase-known').textContent=hSummary.phraseKnown+' 個詞語';
-  document.getElementById('p-hayden-phrase-rate').textContent=hSummary.phraseRate+'%';
-  document.getElementById('p-hayden-sessions').textContent=hSummary.sessions+' 次';
+    document.getElementById('p-hayden-known').textContent=hSummary.wordKnown+' 個字';
+    document.getElementById('p-hayden-rate').textContent=hSummary.wordRate+'%';
+    document.getElementById('p-hayden-phrase-known').textContent=hSummary.phraseKnown+' 個詞語';
+    document.getElementById('p-hayden-phrase-rate').textContent=hSummary.phraseRate+'%';
+    document.getElementById('p-hayden-sessions').textContent=hSummary.sessions+' 次';
 
-  document.getElementById('p-celine-known').textContent=cSummary.wordKnown+' 個字';
-  document.getElementById('p-celine-rate').textContent=cSummary.wordRate+'%';
-  document.getElementById('p-celine-phrase-known').textContent=cSummary.phraseKnown+' 個詞語';
-  document.getElementById('p-celine-phrase-rate').textContent=cSummary.phraseRate+'%';
-  document.getElementById('p-celine-sessions').textContent=cSummary.sessions+' 次';
+    document.getElementById('p-celine-known').textContent=cSummary.wordKnown+' 個字';
+    document.getElementById('p-celine-rate').textContent=cSummary.wordRate+'%';
+    document.getElementById('p-celine-phrase-known').textContent=cSummary.phraseKnown+' 個詞語';
+    document.getElementById('p-celine-phrase-rate').textContent=cSummary.phraseRate+'%';
+    document.getElementById('p-celine-sessions').textContent=cSummary.sessions+' 次';
 
-  renderWeakWords('hayden-weak-words',[...hWordStats,...hPhraseStats]);
-  renderWeakWords('celine-weak-words',[...cWordStats,...cPhraseStats]);
-  await loadSessions();
+    renderWeakWords('hayden-weak-words',[...hWordStats,...hPhraseStats]);
+    renderWeakWords('celine-weak-words',[...cWordStats,...cPhraseStats]);
+    await loadSessions();
+  } catch(e) {
+    console.warn('loadParentStats partial failure:', e.message);
+  }
 }
 async function loadPlayerStatsForParent(player,collection_name){
-  var snap=await getDocs(collection(db,'players',player,collection_name));
-  var stats=[]; snap.forEach(function(d){ stats.push(d.data()); }); return stats;
+  try {
+    var snap = await withTimeout(
+      getDocs(collection(db,'players',player,collection_name)),
+      10000, 'loadPlayerStatsForParent'
+    );
+    var stats=[]; snap.forEach(function(d){ stats.push(d.data()); }); return stats;
+  } catch(e) {
+    console.warn('loadPlayerStatsForParent failed:', e.message);
+    return [];
+  }
 }
 function renderWeakWords(containerId,stats){
   var container=document.getElementById(containerId);
@@ -1695,8 +1961,14 @@ function renderWeakWords(containerId,stats){
 async function loadSessions(){
   var container=document.getElementById('sessions-list');
   try {
-    var hSnap=await getDocs(query(collection(db,'players','hayden','sessions'),orderBy('date','desc'),limit(10)));
-    var cSnap=await getDocs(query(collection(db,'players','celine','sessions'),orderBy('date','desc'),limit(10)));
+    var hSnap = await withTimeout(
+      getDocs(query(collection(db,'players','hayden','sessions'),orderBy('date','desc'),limit(10))),
+      10000, 'loadSessions-hayden'
+    );
+    var cSnap = await withTimeout(
+      getDocs(query(collection(db,'players','celine','sessions'),orderBy('date','desc'),limit(10))),
+      10000, 'loadSessions-celine'
+    );
     var sessions=[];
     hSnap.forEach(function(d){ sessions.push(Object.assign({player:'hayden'},d.data())); });
     cSnap.forEach(function(d){ sessions.push(Object.assign({player:'celine'},d.data())); });
@@ -1718,7 +1990,9 @@ async function loadSessions(){
         '</div>';
     });
     container.innerHTML=html;
-  } catch(e){ container.innerHTML='<p style="color:#bbb;font-size:14px;">載入失敗，請重試</p>'; }
+  } catch(e) {
+    container.innerHTML='<p style="color:#bbb;font-size:14px;">載入失敗，請重試</p>';
+  }
 }
 
 // ====== RESET ======
@@ -1731,7 +2005,7 @@ async function deleteSubCollection(player,subCol){
 window.resetPlayerData=async function(player){
   var name=player==='hayden'?'Hayden':'Celine';
   if(!confirm('確定要清除 '+name+' 的所有學習記錄嗎？')) return;
-  showLoading('重設中...');
+  showLoading('重設中...', '');
   try {
     await deleteSubCollection(player,'wordStats');
     await deleteSubCollection(player,'phraseStats');
@@ -1743,7 +2017,7 @@ window.resetPlayerData=async function(player){
 };
 window.resetAllPlayerData=async function(){
   if(!confirm('確定要清除所有玩家的學習記錄嗎？')) return;
-  showLoading('重設中...');
+  showLoading('重設中...', '');
   try {
     for(var p of ['hayden','celine']){
       await deleteSubCollection(p,'wordStats');
@@ -1758,7 +2032,7 @@ window.resetAllPlayerData=async function(){
 window.resetEverything=async function(){
   if(!confirm('最終警告！這將清除所有字庫和玩家記錄！')) return;
   if(!confirm('再次確認：真的要清除全部數據嗎？')) return;
-  showLoading('清除全部數據中...');
+  showLoading('清除全部數據中...', '');
   try {
     var libSnap=await getDocs(collection(db,'wordLibrary'));
     var batch1=writeBatch(db);
